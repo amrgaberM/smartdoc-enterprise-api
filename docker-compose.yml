@@ -1,8 +1,33 @@
+version: '3.8'
+
 services:
+  # WORKER 1: The Web Server (Django)
   api:
     build: .
-    ports:
-      - "8000:8000"
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
-    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db  # Wait for the database to wake up first
+    environment:
+      - DB_HOST=db
+      - DB_NAME=smartdoc_db
+      - DB_USER=smartdoc_user
+      - DB_PASS=supersecretpassword
+
+  # WORKER 2: The Database (PostgreSQL)
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=smartdoc_db
+      - POSTGRES_USER=smartdoc_user
+      - POSTGRES_PASSWORD=supersecretpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+# This creates a permanent storage space on your hard drive
+# so your data survives even if you delete the container.
+volumes:
+  postgres_data:
