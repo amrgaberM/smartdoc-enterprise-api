@@ -141,7 +141,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated', # Lock everything by default
     ],
- '  DEFAULT_AUTHENTICATION_CLASSES': [
+    'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',  # <--- NEW: The Ticket Reader
         'rest_framework.authentication.SessionAuthentication',      # Keep this for the Browser (Browsable API)
     ],
