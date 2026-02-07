@@ -39,9 +39,13 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'users',
+    'rest_framework',
+    'django_filters',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -49,6 +53,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -125,3 +130,34 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 AUTH_USER_MODEL = 'users.CustomUser'
+
+
+# --- DRF CONFIGURATION (The API Engine) ---
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permission,
+    # or allow read-only access for unauthenticated users.
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated', # Lock everything by default
+    ],
+ '  DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # <--- NEW: The Ticket Reader
+        'rest_framework.authentication.SessionAuthentication',      # Keep this for the Browser (Browsable API)
+    ],
+    # Pagination (Phase 2.5) - Prevents crashing with 10k records
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+
+# --- CORS CONFIGURATION (Who can talk to us?) ---
+# For now, we allow everyone (Development Mode). 
+# In Production (Phase 6.5), we will change this to specific domains.
+CORS_ALLOW_ALL_ORIGINS = True
+
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  # Ticket valid for 1 hour
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),     # Renewable for 1 day
+    'AUTH_HEADER_TYPES': ('Bearer',),                # The password to use the ticket
+}
