@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'corsheaders',
+    'documents',
 ]
 
 MIDDLEWARE = [
@@ -163,3 +164,12 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),     # Renewable for 1 day
     'AUTH_HEADER_TYPES': ('Bearer',),                # The password to use the ticket
 }
+
+import os
+
+# --- MEDIA CONFIGURATION (File Storage) ---
+# The URL where the browser can access the file
+MEDIA_URL = '/media/'
+
+# The Physical Folder on the server where files are stored
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
