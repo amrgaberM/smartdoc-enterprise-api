@@ -14,6 +14,10 @@ class Document(models.Model):
     title = models.CharField(max_length=255)
     file = models.FileField(upload_to='pdfs/') # Save inside a 'pdfs' folder
     created_at = models.DateTimeField(auto_now_add=True)
+    # --- NEW AI FIELDS ---
+    is_analyzed = models.BooleanField(default=False)
+    ai_summary = models.TextField(blank=True, null=True)
+    ai_sentiment = models.CharField(max_length=50, blank=True, null=True)
 
     # 3. String Representation (for Admin Panel)
     def __str__(self):
