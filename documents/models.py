@@ -1,24 +1,23 @@
 from django.db import models
-from django.conf import settings # Use this to reference your CustomUser
+from django.conf import settings
 
 class Document(models.Model):
-    # 1. The Owner (Foreign Key)
-    # If the user is deleted, their files are also deleted (CASCADE)
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE,
-        related_name='documents'
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
     )
 
-    # 2. The File Details
-    title = models.CharField(max_length=255)
-    file = models.FileField(upload_to='pdfs/') # Save inside a 'pdfs' folder
-    created_at = models.DateTimeField(auto_now_add=True)
-    # --- NEW AI FIELDS ---
-    is_analyzed = models.BooleanField(default=False)
-    ai_summary = models.TextField(blank=True, null=True)
-    ai_sentiment = models.CharField(max_length=50, blank=True, null=True)
+    # CORRECTION IS HERE:
+    title = models.CharField(max_length=255)  # <--- Was models.Model (Wrong)
+    
+    file = models.FileField(upload_to='pdfs/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    analysis_result = models.JSONField(default=dict, blank=True)
 
-    # 3. String Representation (for Admin Panel)
     def __str__(self):
-        return f"{self.title} ({self.owner.username})"
+        return self.title

@@ -3,6 +3,5 @@ from .models import Document
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ('title', 'owner', 'created_at')
-    list_filter = ('created_at',)
-    search_fields = ('title', 'owner__username')
+    list_display = ('title', 'owner', 'uploaded_at', 'status') # Added status too!
+    list_filter = ('uploaded_at', 'status')
