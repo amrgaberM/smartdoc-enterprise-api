@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'users',
     'rest_framework',
     'django_filters',
+    'drf_spectacular',
     'corsheaders',
     'documents',
 ]
@@ -149,6 +150,8 @@ REST_FRAMEWORK = {
     # Pagination (Phase 2.5) - Prevents crashing with 10k records
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 # --- CORS CONFIGURATION (Who can talk to us?) ---
@@ -173,3 +176,12 @@ MEDIA_URL = '/media/'
 
 # The Physical Folder on the server where files are stored
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# Swagger Settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'SmartDoc Enterprise API',
+    'DESCRIPTION': 'AI-powered document management system.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
