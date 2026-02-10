@@ -20,7 +20,7 @@ services:
 
   # WORKER 2: The Database (PostgreSQL)
   db:
-    image: postgres:15
+    image: pgvector/pgvector:pg16
     environment:
       - POSTGRES_DB=smartdoc_db
       - POSTGRES_USER=smartdoc_user

@@ -1,74 +1,39 @@
+import fitz  # PyMuPDF
 from celery import shared_task
+from sentence_transformers import SentenceTransformer
 from .models import Document
-import time
-import PyPDF2
-import logging
-
-# Set up a logger to print errors to the console
-logger = logging.getLogger(__name__)
 
 @shared_task
 def analyze_document_task(document_id):
-    """
-    Background task to analyze a document.
-    Handles errors gracefully by updating the status to 'failed'.
-    """
-    logger.info(f"--- WORKER: Starting analysis for Document {document_id} ---")
-    
     try:
-        # 1. Get the Document
-        doc = Document.objects.get(id=document_id)
-        doc.status = 'processing'
-        doc.save()
+        doc_obj = Document.objects.get(id=document_id)
+        doc_obj.status = 'processing'
+        doc_obj.save()
 
-        # 2. Simulate "Heavy AI" Work (Wait 2 seconds)
-        time.sleep(2)
+        # 1. Extract Text
+        text = ""
+        with fitz.open(doc_obj.file.path) as pdf:
+            for page in pdf:
+                text += page.get_text()
 
-        # 3. Extract Text (The "Real" Work)
-        try:
-            # Open the file directly from the storage path
-            with doc.file.open('rb') as f:
-                reader = PyPDF2.PdfReader(f)
-                text = ""
-                
-                # Extract text from all pages
-                for page in reader.pages:
-                    text += page.extract_text() or ""
-                
-                # Check if file was empty or just images
-                if not text.strip():
-                    raise ValueError("No text found. PDF might be an image scan or empty.")
-                
-                word_count = len(text.split())
-                preview = text[:200] + "..." if len(text) > 200 else text
+        # 2. Generate Embedding (Size 768)
+        model = SentenceTransformer('all-mpnet-base-v2')
+        embedding = model.encode(text).tolist()
 
-        except Exception as file_error:
-            # Catch specific PDF errors (corrupted file, wrong format)
-            raise ValueError(f"PDF Error: {str(file_error)}")
-
-        # 4. Success! Save results.
-        doc.analysis_result = {
-            "word_count": word_count,
-            "preview": preview,
-            "sentiment": "Neutral (Mock Analysis)"
+        # 3. Save Results
+        doc_obj.embedding = embedding
+        doc_obj.analysis_result = {
+            "char_count": len(text),
+            "embedding_generated": True
         }
-        doc.status = 'completed'
-        doc.save()
-        logger.info(f"--- WORKER: SUCCESS Document {document_id} ---")
-        return "Analysis Complete"
+        doc_obj.status = 'completed'
+        doc_obj.save()
+        
+        return f"Document {document_id} analyzed successfully."
 
-    except Document.DoesNotExist:
-        return "Error: Document not found"
-    
     except Exception as e:
-        # 5. FAILURE CASE: Update DB so user knows it failed!
-        logger.error(f"--- WORKER: FAILED Document {document_id} -> {e} ---")
-        try:
-            # Re-fetch doc to avoid stale data
-            doc = Document.objects.get(id=document_id)
-            doc.status = 'failed'
-            doc.analysis_result = {"error": str(e)}
-            doc.save()
-        except:
-            pass # If DB is unreachable, we can't do anything
-        return f"Failed: {e}"
+        Document.objects.filter(id=document_id).update(
+            status='failed',
+            analysis_result={"error": str(e)}
+        )
+        return f"Error: {str(e)}"
