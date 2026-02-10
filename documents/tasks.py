@@ -1,50 +1,74 @@
 from celery import shared_task
 from .models import Document
-import PyPDF2
 import time
+import PyPDF2
+import logging
+
+# Set up a logger to print errors to the console
+logger = logging.getLogger(__name__)
 
 @shared_task
 def analyze_document_task(document_id):
     """
-    Background task to extract text and analyze a PDF.
+    Background task to analyze a document.
+    Handles errors gracefully by updating the status to 'failed'.
     """
+    logger.info(f"--- WORKER: Starting analysis for Document {document_id} ---")
+    
     try:
-        # 1. Get the Document (and set status to Processing)
+        # 1. Get the Document
         doc = Document.objects.get(id=document_id)
         doc.status = 'processing'
         doc.save()
 
-        print(f"Starting analysis for: {doc.title}")
-        
-        # 2. Simulate heavy AI work (sleep 3 seconds)
-        time.sleep(3)
+        # 2. Simulate "Heavy AI" Work (Wait 2 seconds)
+        time.sleep(2)
 
-        # 3. Read the PDF (Real work)
-        pdf_reader = PyPDF2.PdfReader(doc.file.path)
-        text_content = ""
-        for page in pdf_reader.pages:
-            text_content += page.extract_text() or ""
+        # 3. Extract Text (The "Real" Work)
+        try:
+            # Open the file directly from the storage path
+            with doc.file.open('rb') as f:
+                reader = PyPDF2.PdfReader(f)
+                text = ""
+                
+                # Extract text from all pages
+                for page in reader.pages:
+                    text += page.extract_text() or ""
+                
+                # Check if file was empty or just images
+                if not text.strip():
+                    raise ValueError("No text found. PDF might be an image scan or empty.")
+                
+                word_count = len(text.split())
+                preview = text[:200] + "..." if len(text) > 200 else text
 
-        # 4. Perform "Analysis" (Count words)
-        word_count = len(text_content.split())
-        
-        # 5. Save Results (and set status to Completed)
+        except Exception as file_error:
+            # Catch specific PDF errors (corrupted file, wrong format)
+            raise ValueError(f"PDF Error: {str(file_error)}")
+
+        # 4. Success! Save results.
         doc.analysis_result = {
             "word_count": word_count,
-            "preview": text_content[:100] + "...",  # First 100 chars
-            "sentiment": "Neutral (Mock)"
+            "preview": preview,
+            "sentiment": "Neutral (Mock Analysis)"
         }
         doc.status = 'completed'
         doc.save()
-        
-        print(f"Finished analysis for: {doc.title}")
+        logger.info(f"--- WORKER: SUCCESS Document {document_id} ---")
         return "Analysis Complete"
 
     except Document.DoesNotExist:
-        return "Document not found"
+        return "Error: Document not found"
+    
     except Exception as e:
-        if 'doc' in locals():
+        # 5. FAILURE CASE: Update DB so user knows it failed!
+        logger.error(f"--- WORKER: FAILED Document {document_id} -> {e} ---")
+        try:
+            # Re-fetch doc to avoid stale data
+            doc = Document.objects.get(id=document_id)
             doc.status = 'failed'
+            doc.analysis_result = {"error": str(e)}
             doc.save()
-        print(f"Error analyzing document: {str(e)}")
-        return f"Error: {str(e)}"
+        except:
+            pass # If DB is unreachable, we can't do anything
+        return f"Failed: {e}"
