@@ -1,19 +1,19 @@
 from sentence_transformers import SentenceTransformer
 
-# We use a small, fast model perfect for standard CPUs
-# 'all-mpnet-base-v2' is widely used and robust (768 dimensions)
-MODEL_NAME = 'all-mpnet-base-v2'
-model = SentenceTransformer(MODEL_NAME)
+# Initialize a private variable to hold the model in memory
+_model = None
 
 def get_embedding(text):
-    """
-    Converts a string of text into a list of 768 numbers.
-    """
+    global _model
+    
+    # LAZY LOADING: Only load the model if it hasn't been loaded yet
+    if _model is None:
+        print("🧠 Loading AI Model into memory (This might take a few seconds)...")
+        _model = SentenceTransformer('all-mpnet-base-v2')
+        print("✅ AI Model loaded successfully!")
+
     if not text or not text.strip():
         return None
-        
-    # Generate the vector
-    vector = model.encode(text)
     
-    # Convert numpy array to standard python list (for database storage)
-    return vector.tolist()
+    embedding = _model.encode(text)
+    return embedding.tolist()

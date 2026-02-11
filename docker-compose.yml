@@ -1,16 +1,16 @@
-version: '3.8'
-
 services:
   # WORKER 1: The Web Server (Django)
   api:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000 --noreload
     volumes:
       - .:/app
     ports:
       - "8000:8000"
     depends_on:
       - db
+    env_file:
+      - .env  # This automatically loads everything in your .env file
     environment:
       - DB_HOST=db
       - DB_NAME=smartdoc_db
@@ -18,7 +18,7 @@ services:
       - DB_PASS=supersecretpassword
       - CELERY_BROKER_URL=redis://redis:6379/0
 
-  # WORKER 2: The Database (PostgreSQL)
+  # WORKER 2: The Database (PostgreSQL with pgvector)
   db:
     image: pgvector/pgvector:pg16
     environment:
@@ -43,6 +43,8 @@ services:
     depends_on:
       - db
       - redis
+    env_file:
+      - .env  # MUST be here too so the background tasks can access Groq
     environment:
       - DB_HOST=db
       - DB_NAME=smartdoc_db

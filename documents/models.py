@@ -23,3 +23,18 @@ class Document(models.Model):
 
     def __str__(self):
         return self.title
+    
+class DocumentChunk(models.Model):
+    """
+    Stores smaller paragraphs of a document so the AI can search 
+    with high precision (avoiding Vector Dilution).
+    """
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='chunks')
+    chunk_index = models.IntegerField(help_text="The order of this paragraph in the document")
+    text_content = models.TextField(help_text="The actual text of this paragraph")
+    
+    # 768 dimensions to match our 'all-mpnet-base-v2' model
+    embedding = VectorField(dimensions=768, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.document.title} - Chunk {self.chunk_index}"

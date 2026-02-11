@@ -1,8 +1,12 @@
-from django.urls import path
-from .views import DocumentListCreateView, DocumentDetailView, DocumentAnalyzeView
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import DocumentViewSet
+
+# A Router automatically generates the URLs for our ViewSet
+router = DefaultRouter()
+# If your base URL is already api/documents/, this will map correctly.
+router.register(r'', DocumentViewSet, basename='document')
 
 urlpatterns = [
-    path('', DocumentListCreateView.as_view(), name='document-list-create'),
-    path('<int:pk>/', DocumentDetailView.as_view(), name='document-detail'),
-    path('<int:pk>/analyze/', DocumentAnalyzeView.as_view(), name='document-analyze'),
+    path('', include(router.urls)),
 ]
