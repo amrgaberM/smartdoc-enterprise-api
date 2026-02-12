@@ -2,9 +2,10 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import UserRateThrottle, ScopedRateThrottle
 from pgvector.django import CosineDistance
 
-from .models import Document, DocumentChunk  # Ensure both are imported
+from .models import Document, DocumentChunk
 from .serializers import DocumentSerializer
 from .tasks import analyze_document_task
 from .embeddings import get_embedding
@@ -13,6 +14,12 @@ from .llm_utils import generate_answer
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
     permission_classes = [IsAuthenticated]
+    
+    # SECURITY: Add Rate Limiting
+    throttle_classes = [UserRateThrottle, ScopedRateThrottle] 
+    
+    # --- FIX IS HERE: Define default scope to avoid TypeError ---
+    throttle_scope = None 
 
     def get_queryset(self):
         return Document.objects.filter(owner=self.request.user).order_by('-uploaded_at')
@@ -23,68 +30,27 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def analyze(self, request, pk=None):
         document = self.get_object()
-        if document.status in ['processing', 'completed']:
-            return Response(
-                {"message": f"Document is already {document.status}."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if document.status == 'processing':
+            return Response({"message": "Document is already being processed."}, status=400)
+
+        document.status = 'processing'
+        document.save()
         analyze_document_task.delay(document.id)
-        return Response(
-            {"message": "Analysis started in the background."},
-            status=status.HTTP_202_ACCEPTED
-        )
+        return Response({"message": "Analysis started in background."}, status=status.HTTP_202_ACCEPTED)
 
-    @action(detail=False, methods=['post'])
-    def search(self, request):
-        """
-        UPGRADED: Searches through individual DocumentChunks for high precision.
-        """
-        query_text = request.data.get('query')
-        if not query_text:
-            return Response(
-                {"error": "Please provide a 'query' field."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        query_vector = get_embedding(query_text)
-        if not query_vector:
-            return Response(
-                {"error": "Failed to generate AI embedding."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        # THE UPGRADE: We search DocumentChunk and filter by the owner of the document
-        chunks = DocumentChunk.objects.filter(
-            document__owner=request.user
-        ).annotate(
-            distance=CosineDistance('embedding', query_vector)
-        ).order_by('distance')[:5]
-
-        response_data = []
-        for chunk in chunks:
-            response_data.append({
-                "document_title": chunk.document.title,
-                "chunk_index": chunk.chunk_index,
-                "distance": round(chunk.distance, 4),
-                "text": chunk.text_content[:300] + "..." # Returns the actual relevant text!
-            })
-
-        return Response({"results": response_data}, status=status.HTTP_200_OK)
-    @action(detail=True, methods=['post'])
+    # Protected by 'ai_chat' scope limit
+    @action(detail=True, methods=['post'], throttle_scope='ai_chat') 
     def ask(self, request, pk=None):
-        """
-        Full RAG: Retrieve relevant chunks and generate an answer using Groq.
-        """
         document = self.get_object()
         question = request.data.get('question')
-
-        if not question:
-            return Response({"error": "Please provide a question."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 1. Vectorize the user's question
-        query_vector = get_embedding(question)
         
-        # 2. Retrieve the top 3 most relevant chunks ONLY for THIS document
+        if not question:
+            return Response({"error": "No question provided"}, status=400)
+
+        query_vector = get_embedding(question)
+        if not query_vector:
+             return Response({"error": "Failed to generate embedding"}, status=500)
+
         context_chunks = DocumentChunk.objects.filter(
             document=document
         ).annotate(
@@ -92,19 +58,54 @@ class DocumentViewSet(viewsets.ModelViewSet):
         ).order_by('distance')[:3]
 
         if not context_chunks.exists():
-            return Response({"error": "No processed content found for this document. Please analyze it first."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "No content found. Did you analyze the document?"}, status=404)
 
-        # 3. Generate the answer using Groq (The Brain)
         try:
             answer = generate_answer(question, context_chunks)
-            
+            sources = [{
+                "page": c.chunk_index + 1,
+                "text": c.text_content[:200],
+                "score": round(1 - float(c.distance), 2)
+            } for c in context_chunks]
+
+            return Response({"answer": answer, "sources": sources})
+        except Exception as e:
+            return Response({"error": f"AI Error: {str(e)}"}, status=500)
+
+    # Protected by 'ai_chat' scope limit
+    @action(detail=False, methods=['post'], throttle_scope='ai_chat') 
+    def global_ask(self, request):
+        question = request.data.get('question')
+        if not question:
+            return Response({"error": "No question provided"}, status=400)
+
+        query_vector = get_embedding(question)
+        if not query_vector:
+             return Response({"error": "Failed to generate embedding"}, status=500)
+
+        context_chunks = DocumentChunk.objects.filter(
+            document__owner=request.user,
+            document__status='completed'
+        ).annotate(
+            distance=CosineDistance('embedding', query_vector)
+        ).order_by('distance')[:5]
+
+        if not context_chunks.exists():
+            return Response({"error": "No knowledge found. Upload and analyze documents first."}, status=404)
+
+        try:
+            answer = generate_answer(question, context_chunks)
+            sources = [{
+                "document_id": c.document.id,
+                "document_title": c.document.title,
+                "page": c.chunk_index + 1,
+                "text": c.text_content[:200],
+                "score": round(1 - float(c.distance), 2)
+            } for c in context_chunks]
+
             return Response({
-                "question": question,
                 "answer": answer,
-                "sources": [
-                    {"index": c.chunk_index, "distance": round(c.distance, 4)} 
-                    for c in context_chunks
-                ]
+                "sources": sources
             })
         except Exception as e:
-            return Response({"error": f"LLM Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+             return Response({"error": f"AI Error: {str(e)}"}, status=500)

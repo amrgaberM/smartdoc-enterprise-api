@@ -40,3 +40,33 @@ def generate_answer(question, context_chunks):
     )
     
     return chat_completion.choices[0].message.content
+
+# --- ADD THIS FUNCTION BELOW ---
+def generate_beneficial_analysis(text):
+    """
+    Generates 3 bullet points + a summary. 
+    Protects against Context Window limits by truncating input.
+    """
+    # SAFETY CLIP: Limit to first 15,000 chars to prevent API crash
+    safe_text = text[:15000] 
+
+    system_prompt = (
+        "You are an expert Document Analyst. "
+        "Analyze the provided text and output a text block containing two sections: "
+        "1. A 2-sentence summary. "
+        "2. Three short, punchy bullet points highlighting key insights. "
+        "Do not use JSON or complex formatting. Just plain text."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Analyze this:\n\n{safe_text}"}
+            ],
+            model="llama-3.3-70b-versatile", # Very fast, good for summaries
+            temperature=0.5,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Could not generate insights: {str(e)}"

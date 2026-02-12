@@ -1,28 +1,29 @@
-# 1. Use Python 3.11 (Slim version is lighter/faster)
+# Use a lightweight but stable Python image
 FROM python:3.11-slim
 
-# 2. Set environment variables to optimize Python for Docker
-# Prevents Python from writing .pyc files (useless in containers)
+# Prevent Python from writing .pyc files and ensure logs are flush immediately
 ENV PYTHONDONTWRITEBYTECODE 1
-# Ensures logs are printed immediately (Critical for debugging!)
 ENV PYTHONUNBUFFERED 1
 
-# 3. Set the working directory (The folder inside the container)
 WORKDIR /app
 
-# 4. Install system dependencies (Required for Postgres later)
+# 1. Install system-level dependencies for Postgres and Python C-extensions
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 5. Copy requirements and install dependencies
+# 2. Copy ONLY requirements first to leverage Docker cache
 COPY requirements.txt /app/
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
 
-# 6. Copy the rest of the code
+# 3. Install heavy AI libraries
+# --no-cache-dir keeps the image small and prevents memory hangs during install
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# 4. Copy the rest of your application code
+# Since the heavy install is done above, this step is instant
 COPY . /app/
 
-# 7. The command to start the server
+# 5. Start the server
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

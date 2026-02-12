@@ -2,6 +2,7 @@ import fitz  # PyMuPDF
 from celery import shared_task
 from .models import Document, DocumentChunk
 from .embeddings import get_embedding
+from .llm_utils import generate_beneficial_analysis # <--- Import this!
 
 @shared_task
 def analyze_document_task(document_id):
@@ -48,15 +49,16 @@ def analyze_document_task(document_id):
                     embedding=vector
                 )
 
-        # 5. Mark Complete and finally add that Preview!
+        # 5. GENERATE AI INSIGHTS (This was missing!)
+        insights = generate_beneficial_analysis(full_text)
+
+        # 6. Mark Complete and save results
         document.status = 'completed'
         document.analysis_result = {
+            "insights": insights,
             "char_count": len(full_text),
             "chunk_count": len(chunks),
-            "text_preview": full_text[:200] + "..."  # Grab the first 200 chars
         }
-        # We don't strictly need the massive document-level embedding anymore, 
-        # but we can leave it null for now.
         document.save()
 
     except Exception as e:
