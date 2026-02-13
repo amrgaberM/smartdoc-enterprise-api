@@ -2,7 +2,7 @@ import fitz  # PyMuPDF
 from celery import shared_task
 from .models import Document, DocumentChunk
 from .embeddings import get_embedding
-from .llm_utils import generate_beneficial_analysis # <--- Import this!
+from .llm_utils import generate_beneficial_analysis
 
 @shared_task
 def analyze_document_task(document_id):
@@ -15,6 +15,8 @@ def analyze_document_task(document_id):
         # 1. Extract Text from PDF
         doc = fitz.open(document.file.path)
         full_text = ""
+        page_count = len(doc)
+        
         for page in doc:
             full_text += page.get_text() + "\n"
         
@@ -49,14 +51,17 @@ def analyze_document_task(document_id):
                     embedding=vector
                 )
 
-        # 5. GENERATE AI INSIGHTS (This was missing!)
+        # 5. GENERATE AI INSIGHTS
         insights = generate_beneficial_analysis(full_text)
 
         # 6. Mark Complete and save results
         document.status = 'completed'
         document.analysis_result = {
             "insights": insights,
+            "summary": insights,  # ✅ FIX: Add summary field (same as insights)
             "char_count": len(full_text),
+            "word_count": len(full_text.split()),
+            "page_count": page_count,
             "chunk_count": len(chunks),
         }
         document.save()
@@ -64,5 +69,9 @@ def analyze_document_task(document_id):
     except Exception as e:
         if 'document' in locals():
             document.status = 'failed'
-            document.analysis_result = {"error": str(e)}
+            document.analysis_result = {
+                "error": str(e),
+                "insights": f"Analysis failed: {str(e)}",
+                "summary": f"Failed to process document: {str(e)}"
+            }
             document.save()
